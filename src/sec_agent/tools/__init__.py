@@ -1,5 +1,6 @@
 from .base import Tool, ToolRegistry, ToolResult
 from .bash_tool import BashTool
+from .done import DoneTool
 from .http_request import HttpRequestTool
 from .read_file import ReadFileTool
 from .write_file import WriteFileTool
@@ -9,6 +10,7 @@ __all__ = [
     "ToolRegistry",
     "ToolResult",
     "BashTool",
+    "DoneTool",
     "HttpRequestTool",
     "ReadFileTool",
     "WriteFileTool",
@@ -23,4 +25,5 @@ def default_registry() -> ToolRegistry:
     registry.register(ReadFileTool())
     registry.register(WriteFileTool())
     registry.register(HttpRequestTool())
+    registry.register(DoneTool())
     return registry

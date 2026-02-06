@@ -4,7 +4,6 @@ from .tools.base import ToolRegistry
 
 
 ACTION_PATTERN = re.compile(r"ACTION:\s*(\{.*\})", re.DOTALL)
-DONE_PATTERN = re.compile(r"DONE:\s*(.+)")
 
 
 def build_system_prompt(registry: ToolRegistry) -> str:
@@ -29,13 +28,13 @@ Examples:
 - ACTION: {{"tool": "read_file", "args": {{"path": "/etc/hosts"}}}}
 - ACTION: {{"tool": "http_request", "args": {{"method": "GET", "url": "https://example.com"}}}}
 - ACTION: {{"tool": "write_file", "args": {{"path": "report.txt", "content": "Scan results..."}}}}
+- ACTION: {{"tool": "done", "args": {{"summary": "Completed the port scan and found 3 open ports"}}}}
 
 ## Rules
 
 - Use ONE tool call per response.
 - Briefly explain what you're about to do and why before the ACTION line.
 - Choose the most appropriate tool for the task.
-- When the task is complete, indicate it with: DONE: summary of what was accomplished
-- Never output both an ACTION and a DONE in the same response.
+- When the task is complete, use the "done" tool with a summary of what was accomplished.
 - If you need more information from the user, just ask — don't guess.
 - Be aware of the current working directory and OS context."""

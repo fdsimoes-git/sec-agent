@@ -1,7 +1,6 @@
 import json
-import re
 
-from sec_agent.prompts import ACTION_PATTERN, DONE_PATTERN, build_system_prompt
+from sec_agent.prompts import ACTION_PATTERN, build_system_prompt
 from sec_agent.tools import default_registry
 from sec_agent.tools.base import ToolRegistry
 
@@ -27,16 +26,13 @@ class TestPatterns:
         m = ACTION_PATTERN.search(text)
         assert m is None
 
-    def test_done_pattern(self):
-        text = "DONE: completed the port scan"
-        m = DONE_PATTERN.search(text)
+    def test_action_pattern_done_tool(self):
+        text = 'ACTION: {"tool": "done", "args": {"summary": "completed the port scan"}}'
+        m = ACTION_PATTERN.search(text)
         assert m is not None
-        assert m.group(1) == "completed the port scan"
-
-    def test_done_pattern_no_match(self):
-        text = "Still working on it."
-        m = DONE_PATTERN.search(text)
-        assert m is None
+        parsed = json.loads(m.group(1))
+        assert parsed["tool"] == "done"
+        assert parsed["args"]["summary"] == "completed the port scan"
 
     def test_action_pattern_nested_json(self):
         text = 'ACTION: {"tool": "http_request", "args": {"url": "https://example.com", "headers": {"Accept": "application/json"}}}'
@@ -54,20 +50,22 @@ class TestBuildSystemPrompt:
         assert "read_file" in prompt
         assert "write_file" in prompt
         assert "http_request" in prompt
+        assert "done" in prompt
 
     def test_contains_action_format(self):
         reg = default_registry()
         prompt = build_system_prompt(reg)
         assert "ACTION:" in prompt
 
-    def test_contains_done_format(self):
+    def test_done_tool_documented(self):
         reg = default_registry()
         prompt = build_system_prompt(reg)
-        assert "DONE:" in prompt
+        # done tool should appear in the tool catalog
+        assert "done" in prompt
+        assert "summary" in prompt
 
     def test_empty_registry(self):
         reg = ToolRegistry()
         prompt = build_system_prompt(reg)
         # Should still produce a valid prompt, just with no tool docs
         assert "ACTION:" in prompt
-        assert "DONE:" in prompt

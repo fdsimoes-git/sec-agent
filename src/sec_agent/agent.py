@@ -1,7 +1,7 @@
 import json
 
 from .executor import ask_tool_approval
-from .prompts import ACTION_PATTERN, DONE_PATTERN, build_system_prompt
+from .prompts import ACTION_PATTERN, build_system_prompt
 from .providers.base import ModelProvider
 from .tools.base import ToolRegistry
 
@@ -20,17 +20,8 @@ def agent_loop(task: str, provider: ModelProvider, registry: ToolRegistry, max_i
         print(f"\n🤖 Assistant: {content}\n")
 
         action_match = ACTION_PATTERN.search(content)
-        done_match = DONE_PATTERN.search(content)
 
-        if done_match:
-            print(f"✅ Done: {done_match.group(1)}\n")
-            follow_up = input("Follow-up task (or Enter to quit): ").strip()
-            if not follow_up:
-                return
-            messages.append({"role": "assistant", "content": content})
-            messages.append({"role": "user", "content": follow_up})
-
-        elif action_match:
+        if action_match:
             # Parse the tool call JSON
             try:
                 action = json.loads(action_match.group(1))
@@ -52,7 +43,7 @@ def agent_loop(task: str, provider: ModelProvider, registry: ToolRegistry, max_i
                 messages.append({"role": "user", "content": f"Unknown tool '{tool_name}'. Available tools: {available}"})
                 continue
 
-            # Ask for approval
+            # Ask for approval (some tools like 'done' skip this)
             if tool.requires_approval:
                 approved_args, execute = ask_tool_approval(tool_name, args)
             else:
@@ -61,10 +52,20 @@ def agent_loop(task: str, provider: ModelProvider, registry: ToolRegistry, max_i
             if execute and approved_args is not None:
                 print(f"⚙️  Executing: {tool_name}")
                 result = tool.execute(**approved_args)
-                status = "✅" if result.success else "❌"
-                print(f"{status} Result:\n{result.output}\n")
-                messages.append({"role": "assistant", "content": content})
-                messages.append({"role": "user", "content": f"Tool '{tool_name}' output:\n{result.output}"})
+
+                # Handle termination
+                if result.terminates:
+                    print(f"✅ Done: {result.output}\n")
+                    follow_up = input("Follow-up task (or Enter to quit): ").strip()
+                    if not follow_up:
+                        return
+                    messages.append({"role": "assistant", "content": content})
+                    messages.append({"role": "user", "content": follow_up})
+                else:
+                    status = "✅" if result.success else "❌"
+                    print(f"{status} Result:\n{result.output}\n")
+                    messages.append({"role": "assistant", "content": content})
+                    messages.append({"role": "user", "content": f"Tool '{tool_name}' output:\n{result.output}"})
             else:
                 print("❌ Tool call cancelled.\n")
                 messages.append({"role": "assistant", "content": content})

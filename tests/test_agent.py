@@ -6,6 +6,11 @@ from sec_agent.providers.base import ModelProvider
 from sec_agent.tools import default_registry
 
 
+def done_action(summary: str) -> str:
+    """Helper to build a done ACTION string."""
+    return f'ACTION: {json.dumps({"tool": "done", "args": {"summary": summary}})}'
+
+
 class FakeProvider(ModelProvider):
     """A fake provider that returns pre-scripted responses."""
 
@@ -18,18 +23,18 @@ class FakeProvider(ModelProvider):
 
 class TestAgentLoop:
     def test_done_on_first_response(self, monkeypatch):
-        """Agent exits cleanly when LLM responds with DONE immediately."""
-        provider = FakeProvider(["DONE: nothing to do"])
+        """Agent exits cleanly when LLM calls done immediately."""
+        provider = FakeProvider([done_action("nothing to do")])
         registry = default_registry()
         # Empty input on follow-up prompt means quit
         monkeypatch.setattr("builtins.input", lambda _: "")
         agent_loop("do something", provider, registry, max_iterations=5)
 
     def test_done_with_followup(self, monkeypatch, capsys):
-        """Agent handles follow-up after DONE."""
+        """Agent handles follow-up after done."""
         provider = FakeProvider([
-            "DONE: listed the files",
-            "DONE: also counted them",
+            done_action("listed the files"),
+            done_action("also counted them"),
         ])
         registry = default_registry()
         inputs = iter(["count them too", ""])
@@ -44,10 +49,10 @@ class TestAgentLoop:
         action = json.dumps({"tool": "bash", "args": {"command": "echo test123"}})
         provider = FakeProvider([
             f"I'll run echo.\n\nACTION: {action}",
-            "DONE: ran the command",
+            done_action("ran the command"),
         ])
         registry = default_registry()
-        # First input: approve the tool call. Second: quit after DONE.
+        # First input: approve the tool call. Second: quit after done.
         inputs = iter(["y", ""])
         monkeypatch.setattr("builtins.input", lambda _: next(inputs))
         agent_loop("echo test", provider, registry, max_iterations=5)
@@ -59,7 +64,7 @@ class TestAgentLoop:
         action = json.dumps({"tool": "bash", "args": {"command": "rm -rf /"}})
         provider = FakeProvider([
             f"ACTION: {action}",
-            "DONE: understood, cancelled",
+            done_action("understood, cancelled"),
         ])
         registry = default_registry()
         inputs = iter(["n", ""])
@@ -73,7 +78,7 @@ class TestAgentLoop:
         action = json.dumps({"tool": "nonexistent", "args": {}})
         provider = FakeProvider([
             f"ACTION: {action}",
-            "DONE: ok nevermind",
+            done_action("ok nevermind"),
         ])
         registry = default_registry()
         monkeypatch.setattr("builtins.input", lambda _: "")
@@ -85,13 +90,13 @@ class TestAgentLoop:
         """Agent handles malformed JSON in ACTION and recovers."""
         provider = FakeProvider([
             'ACTION: {not: valid json}',
-            "DONE: gave up",
+            done_action("gave up"),
         ])
         registry = default_registry()
         monkeypatch.setattr("builtins.input", lambda _: "")
         agent_loop("do something", provider, registry, max_iterations=5)
         out = capsys.readouterr().out
-        # Agent should recover: warn about bad JSON, then get DONE on next turn
+        # Agent should recover: warn about bad JSON, then done on next turn
         assert "could not parse" in out.lower()
         assert "gave up" in out.lower()
 
@@ -99,7 +104,7 @@ class TestAgentLoop:
         """Agent asks user for input when LLM doesn't use a tool."""
         provider = FakeProvider([
             "What IP address should I scan?",
-            "DONE: ok, quitting",
+            done_action("ok, quitting"),
         ])
         registry = default_registry()
         inputs = iter(["192.168.1.1", ""])
@@ -125,7 +130,7 @@ class TestAgentLoop:
         action = json.dumps({"tool": "read_file", "args": {"path": str(target)}})
         provider = FakeProvider([
             f"I'll read the file.\n\nACTION: {action}",
-            "DONE: read the file",
+            done_action("read the file"),
         ])
         registry = default_registry()
         inputs = iter(["y", ""])
@@ -133,3 +138,15 @@ class TestAgentLoop:
         agent_loop("read that file", provider, registry, max_iterations=5)
         out = capsys.readouterr().out
         assert "secret data here" in out
+
+    def test_done_tool_skips_approval(self, monkeypatch, capsys):
+        """The done tool should not prompt for approval."""
+        provider = FakeProvider([done_action("all finished")])
+        registry = default_registry()
+        # Only one input call should happen: the follow-up prompt
+        monkeypatch.setattr("builtins.input", lambda _: "")
+        agent_loop("do something", provider, registry, max_iterations=5)
+        out = capsys.readouterr().out
+        assert "all finished" in out
+        # Should NOT contain approval prompt text
+        assert "Execute?" not in out

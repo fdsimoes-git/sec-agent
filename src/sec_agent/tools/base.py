@@ -8,6 +8,7 @@ class ToolResult:
     """Result from a tool execution."""
     output: str
     success: bool = True
+    terminates: bool = False
 
 
 class Tool(ABC):
