@@ -16,7 +16,7 @@ def main() -> None:
     parser.add_argument("--max-context-tokens", type=int, default=6000, help="Max context token budget (default: 6000)")
     args = parser.parse_args()
 
-    provider = OllamaProvider(model=args.model, num_ctx=args.max_context_tokens)
+    provider = OllamaProvider(model=args.model)
     registry = default_registry()
 
     if args.task:
