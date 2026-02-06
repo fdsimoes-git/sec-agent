@@ -9,12 +9,11 @@ from .providers.base import ModelProvider
 from .tools.base import ToolRegistry
 
 
-def _handle_action(action_match, ctx, registry):
+def _handle_action(content, action_match, ctx, registry):
     """Process a parsed ACTION from the assistant response.
 
     Returns True if the agent should stop (user quit), False otherwise.
     """
-    content = action_match.string
     try:
         action = json.loads(action_match.group(1))
     except json.JSONDecodeError:
@@ -92,7 +91,7 @@ def agent_loop(
         action_match = ACTION_PATTERN.search(content)
 
         if action_match:
-            if _handle_action(action_match, ctx, registry):
+            if _handle_action(content, action_match, ctx, registry):
                 return
         else:
             follow_up = input("You: ").strip()

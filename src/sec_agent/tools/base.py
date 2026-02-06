@@ -21,6 +21,16 @@ class Tool(ABC):
     parameters: dict  # JSON Schema describing accepted arguments
     requires_approval: bool = True
 
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if getattr(cls, "__abstractmethods__", None):
+            return  # skip validation on intermediate ABCs
+        for attr in ("name", "description", "parameters"):
+            if not hasattr(cls, attr):
+                raise TypeError(
+                    f"Tool subclass {cls.__name__!r} must define '{attr}'"
+                )
+
     @abstractmethod
     def execute(self, **kwargs) -> ToolResult:
         """Execute the tool with the given arguments and return a result."""

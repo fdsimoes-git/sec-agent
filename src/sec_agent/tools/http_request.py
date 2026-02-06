@@ -4,6 +4,8 @@ import httpx
 
 from .base import Tool, ToolResult
 
+MAX_RESPONSE_BODY_CHARS = 5000
+
 
 class HttpRequestTool(Tool):
     """Make HTTP requests to URLs."""
@@ -34,6 +36,11 @@ class HttpRequestTool(Tool):
             "description": "Optional request body",
             "default": "",
         },
+        "timeout": {
+            "type": "integer",
+            "description": "Request timeout in seconds (default: 30)",
+            "default": 30,
+        },
     }
     requires_approval = True
 
@@ -42,16 +49,17 @@ class HttpRequestTool(Tool):
         url = kwargs.get("url", "")
         headers = kwargs.get("headers", {})
         body = kwargs.get("body", "")
+        timeout = kwargs.get("timeout", 30)
 
         if not url:
             return ToolResult(output="Error: no url provided", success=False)
 
         try:
-            with httpx.Client(timeout=30, follow_redirects=True) as client:
+            with httpx.Client(timeout=timeout, follow_redirects=True) as client:
                 response = client.request(
                     method=method,
                     url=url,
-                    headers=headers or {},
+                    headers=headers,
                     content=body if body else None,
                 )
 
@@ -67,8 +75,10 @@ class HttpRequestTool(Tool):
             lines.append("--- Response Body ---")
 
             body_text = response.text
-            if len(body_text) > 5000:
-                body_text = body_text[:5000] + "\n... (truncated)"
+            if len(body_text) > MAX_RESPONSE_BODY_CHARS:
+                body_text = (
+                    body_text[:MAX_RESPONSE_BODY_CHARS] + "\n... (truncated)"
+                )
             lines.append(body_text)
 
             return ToolResult(output="\n".join(lines))

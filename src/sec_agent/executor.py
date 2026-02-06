@@ -2,6 +2,8 @@
 
 import json
 
+MAX_ARG_DISPLAY_LENGTH = 200
+
 
 def ask_tool_approval(tool_name: str, args: dict) -> tuple[dict | None, bool]:
     """Request user approval before executing a tool call."""
@@ -9,8 +11,8 @@ def ask_tool_approval(tool_name: str, args: dict) -> tuple[dict | None, bool]:
     for key, value in args.items():
         display = value if isinstance(value, str) else json.dumps(value)
         # Truncate long values for display
-        if len(str(display)) > 200:
-            display = str(display)[:200] + "..."
+        if len(str(display)) > MAX_ARG_DISPLAY_LENGTH:
+            display = str(display)[:MAX_ARG_DISPLAY_LENGTH] + "..."
         print(f"   {key}: {display}")
 
     while True:

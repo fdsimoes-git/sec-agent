@@ -6,7 +6,12 @@ from .base import Tool, ToolResult
 
 
 class BashTool(Tool):
-    """Execute shell commands on the local system."""
+    """Execute shell commands on the local system.
+
+    Security note: uses shell=True intentionally so the LLM can compose
+    pipes, redirections, and complex command lines.  Every invocation
+    requires explicit user approval before execution.
+    """
 
     name = "bash"
     description = (

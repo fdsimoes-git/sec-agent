@@ -1,7 +1,5 @@
 """Integration tests for the default registry and tool discovery."""
 
-from sec_agent.tools import default_registry
-
 
 class TestDefaultRegistry:
     def test_all_builtin_tools_registered(self, registry):

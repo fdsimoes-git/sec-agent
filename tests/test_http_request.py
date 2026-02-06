@@ -1,6 +1,5 @@
-import json
-import pytest
 import httpx
+import pytest
 
 from sec_agent.tools.http_request import HttpRequestTool
 

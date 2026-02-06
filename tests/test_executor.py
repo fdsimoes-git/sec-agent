@@ -1,6 +1,3 @@
-import json
-import pytest
-
 from sec_agent.executor import ask_tool_approval
 
 
@@ -32,19 +29,12 @@ class TestAskToolApproval:
         assert args is None
 
     def test_edit_invalid_json_then_cancel(self, monkeypatch):
-        # Invalid JSON prints warning, then empty input cancels
-        inputs = iter(["e", "not json", ""])
+        # Invalid JSON prints warning, loops back to prompt, then "n" cancels
+        inputs = iter(["e", "not json", "n"])
         monkeypatch.setattr("builtins.input", lambda _: next(inputs))
-        # The function loops on invalid JSON but re-prompts via the while loop
-        # Actually, invalid JSON prints a message and falls through to return None
-        # Let's trace: "e" -> input for JSON -> "not json" -> JSONDecodeError -> print msg
-        # Then it returns (None, False) since edited is truthy but parse failed...
-        # Actually looking at the code: after JSONDecodeError it prints and does nothing,
-        # so the while loop continues. Next iteration: "e" again... wait, no:
-        # the next input call is for "Execute? (y/n/e to edit):" which gets ""
-        # which doesn't match y/n/e, so it prints "Please type..." and loops again.
-        # This gets complicated. Let's just test the happy paths.
-        pass
+        args, execute = ask_tool_approval("bash", {"command": "ls"})
+        assert execute is False
+        assert args is None
 
     def test_retry_on_invalid_input(self, monkeypatch):
         inputs = iter(["x", "y"])

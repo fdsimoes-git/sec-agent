@@ -1,4 +1,3 @@
-import os
 import pytest
 
 from sec_agent.tools.write_file import WriteFileTool

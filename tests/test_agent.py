@@ -1,5 +1,4 @@
 import json
-import pytest
 
 from sec_agent.agent import agent_loop
 from sec_agent.providers.base import ModelProvider

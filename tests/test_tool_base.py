@@ -1,5 +1,3 @@
-import pytest
-
 from sec_agent.tools.base import Tool, ToolRegistry, ToolResult
 
 

@@ -50,8 +50,8 @@ class MathTool(Tool):
         except (TypeError, ValueError):
             return ToolResult(output="Error: operands must be numbers", success=False)
 
-        func = OPERATIONS.get(operation)
-        if func is None:
+        op_func = OPERATIONS.get(operation)
+        if op_func is None:
             return ToolResult(
                 output=(
                     f"Error: unknown operation '{operation}'. "
@@ -61,7 +61,7 @@ class MathTool(Tool):
             )
 
         try:
-            result = func(a, b)
+            result = op_func(a, b)
         except ZeroDivisionError:
             return ToolResult(output="Error: division by zero", success=False)
 

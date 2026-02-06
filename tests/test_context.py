@@ -1,5 +1,3 @@
-import pytest
-
 from sec_agent.context import ContextManager, estimate_tokens, truncate_output
 
 
