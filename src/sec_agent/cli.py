@@ -1,0 +1,28 @@
+import argparse
+
+from .agent import agent_loop
+from .providers import OllamaProvider
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        prog="sec-agent",
+        description="Security assistant agent powered by local LLMs via Ollama",
+    )
+    parser.add_argument("task", nargs="?", default=None, help="Task to perform (interactive if omitted)")
+    parser.add_argument("--model", default="qwen2.5-coder:7b", help="Ollama model to use (default: qwen2.5-coder:7b)")
+    parser.add_argument("--max-iterations", type=int, default=15, help="Max agent iterations (default: 15)")
+    args = parser.parse_args()
+
+    provider = OllamaProvider(model=args.model)
+
+    if args.task:
+        task = args.task
+    else:
+        print("=== sec-agent — Security Assistant ===\n")
+        task = input("What do you want to do? ").strip()
+        if not task:
+            print("No task provided. Exiting.")
+            return
+
+    agent_loop(task, provider, max_iterations=args.max_iterations)
