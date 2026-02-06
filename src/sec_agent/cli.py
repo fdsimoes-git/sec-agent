@@ -2,6 +2,7 @@ import argparse
 
 from .agent import agent_loop
 from .providers import OllamaProvider
+from .tools import default_registry
 
 
 def main() -> None:
@@ -15,6 +16,7 @@ def main() -> None:
     args = parser.parse_args()
 
     provider = OllamaProvider(model=args.model)
+    registry = default_registry()
 
     if args.task:
         task = args.task
@@ -25,4 +27,4 @@ def main() -> None:
             print("No task provided. Exiting.")
             return
 
-    agent_loop(task, provider, max_iterations=args.max_iterations)
+    agent_loop(task, provider, registry, max_iterations=args.max_iterations)

@@ -1,42 +1,32 @@
-import subprocess
+import json
 
 
-def ask_approval(command: str) -> tuple[str | None, bool]:
-    """Request user approval before executing a command."""
-    print(f"\n⚠️  Proposed command: {command}")
+def ask_tool_approval(tool_name: str, args: dict) -> tuple[dict | None, bool]:
+    """Request user approval before executing a tool call."""
+    print(f"\n⚠️  Proposed tool call: {tool_name}")
+    for key, value in args.items():
+        display = value if isinstance(value, str) else json.dumps(value)
+        # Truncate long values for display
+        if len(str(display)) > 200:
+            display = str(display)[:200] + "..."
+        print(f"   {key}: {display}")
+
     while True:
         response = input("Execute? (y/n/e to edit): ").lower().strip()
         if response == "y":
-            return command, True
+            return args, True
         elif response == "n":
             return None, False
         elif response == "e":
-            edited = input("Enter edited command: ").strip()
+            print(f"Current args: {json.dumps(args, indent=2)}")
+            edited = input("Enter new args as JSON (or empty to cancel): ").strip()
             if edited:
-                return edited, True
+                try:
+                    new_args = json.loads(edited)
+                    return new_args, True
+                except json.JSONDecodeError:
+                    print("Invalid JSON. Try again or press Enter to cancel.")
+            else:
+                return None, False
         else:
             print("Please type 'y', 'n', or 'e'")
-
-
-def execute_command(command: str, timeout: int = 60) -> str:
-    """Execute a shell command and return combined stdout/stderr."""
-    try:
-        result = subprocess.run(
-            command,
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-        output = ""
-        if result.stdout:
-            output += result.stdout
-        if result.stderr:
-            if output:
-                output += "\n"
-            output += result.stderr
-        return output if output else "(no output)"
-    except subprocess.TimeoutExpired:
-        return f"Error: command timed out after {timeout}s"
-    except Exception as e:
-        return f"Error: {e}"
