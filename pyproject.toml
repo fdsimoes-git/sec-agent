@@ -11,6 +11,7 @@ dependencies = [
 
 [project.scripts]
 sec-agent = "sec_agent.cli:main"
+sec-agent-train = "sec_agent.training.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.10.0,<0.11.0"]
@@ -20,4 +21,9 @@ build-backend = "uv_build"
 dev = [
     "pytest>=9.0.2",
     "pytest-httpx>=0.36.0",
+]
+training = [
+    "mlx>=0.22.0",
+    "mlx-lm>=0.22.0",
+    "transformers>=4.51.0,<5.0",
 ]
