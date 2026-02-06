@@ -1,3 +1,5 @@
+"""HTTP request tool."""
+
 import httpx
 
 from .base import Tool, ToolResult
@@ -7,12 +9,31 @@ class HttpRequestTool(Tool):
     """Make HTTP requests to URLs."""
 
     name = "http_request"
-    description = "Send an HTTP request and return the response. Useful for testing web endpoints, APIs, checking if services are up, and fetching web content."
+    description = (
+        "Send an HTTP request and return the response. Useful for testing "
+        "web endpoints, APIs, checking if services are up, "
+        "and fetching web content."
+    )
     parameters = {
-        "method": {"type": "string", "description": "HTTP method: GET, POST, PUT, DELETE, HEAD, OPTIONS", "default": "GET"},
-        "url": {"type": "string", "description": "The URL to request"},
-        "headers": {"type": "object", "description": "Optional HTTP headers as key-value pairs", "default": {}},
-        "body": {"type": "string", "description": "Optional request body", "default": ""},
+        "method": {
+            "type": "string",
+            "description": "HTTP method: GET, POST, PUT, DELETE, HEAD, OPTIONS",
+            "default": "GET",
+        },
+        "url": {
+            "type": "string",
+            "description": "The URL to request",
+        },
+        "headers": {
+            "type": "object",
+            "description": "Optional HTTP headers as key-value pairs",
+            "default": {},
+        },
+        "body": {
+            "type": "string",
+            "description": "Optional request body",
+            "default": "",
+        },
     }
     requires_approval = True
 
@@ -51,5 +72,5 @@ class HttpRequestTool(Tool):
             lines.append(body_text)
 
             return ToolResult(output="\n".join(lines))
-        except Exception as e:
-            return ToolResult(output=f"Error: {e}", success=False)
+        except httpx.HTTPError as exc:
+            return ToolResult(output=f"Error: {exc}", success=False)

@@ -1,3 +1,5 @@
+"""Base classes for the tool system."""
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import json
@@ -22,7 +24,6 @@ class Tool(ABC):
     @abstractmethod
     def execute(self, **kwargs) -> ToolResult:
         """Execute the tool with the given arguments and return a result."""
-        ...
 
     def schema(self) -> dict:
         """Return a serializable description of this tool for the LLM prompt."""

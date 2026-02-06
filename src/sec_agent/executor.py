@@ -1,3 +1,5 @@
+"""Interactive tool-call approval for the agent loop."""
+
 import json
 
 
@@ -15,9 +17,9 @@ def ask_tool_approval(tool_name: str, args: dict) -> tuple[dict | None, bool]:
         response = input("Execute? (y/n/e to edit): ").lower().strip()
         if response == "y":
             return args, True
-        elif response == "n":
+        if response == "n":
             return None, False
-        elif response == "e":
+        if response == "e":
             print(f"Current args: {json.dumps(args, indent=2)}")
             edited = input("Enter new args as JSON (or empty to cancel): ").strip()
             if edited:

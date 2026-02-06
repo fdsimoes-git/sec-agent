@@ -1,3 +1,5 @@
+"""System prompt construction and response parsing patterns."""
+
 import re
 
 from .tools.base import ToolRegistry

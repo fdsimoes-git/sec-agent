@@ -1,3 +1,5 @@
+"""Shell command execution tool."""
+
 import subprocess
 
 from .base import Tool, ToolResult
@@ -7,10 +9,21 @@ class BashTool(Tool):
     """Execute shell commands on the local system."""
 
     name = "bash"
-    description = "Run a shell command and return its output. Use for system commands, security tools (nmap, curl, dig, etc.), and general CLI operations."
+    description = (
+        "Run a shell command and return its output. "
+        "Use for system commands, security tools "
+        "(nmap, curl, dig, etc.), and general CLI operations."
+    )
     parameters = {
-        "command": {"type": "string", "description": "The shell command to execute"},
-        "timeout": {"type": "integer", "description": "Timeout in seconds (default: 60)", "default": 60},
+        "command": {
+            "type": "string",
+            "description": "The shell command to execute",
+        },
+        "timeout": {
+            "type": "integer",
+            "description": "Timeout in seconds (default: 60)",
+            "default": 60,
+        },
     }
     requires_approval = True
 
@@ -28,6 +41,7 @@ class BashTool(Tool):
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                check=False,
             )
             output = ""
             if result.stdout:
@@ -38,6 +52,9 @@ class BashTool(Tool):
                 output += result.stderr
             return ToolResult(output=output if output else "(no output)")
         except subprocess.TimeoutExpired:
-            return ToolResult(output=f"Error: command timed out after {timeout}s", success=False)
-        except Exception as e:
-            return ToolResult(output=f"Error: {e}", success=False)
+            return ToolResult(
+                output=f"Error: command timed out after {timeout}s",
+                success=False,
+            )
+        except OSError as exc:
+            return ToolResult(output=f"Error: {exc}", success=False)

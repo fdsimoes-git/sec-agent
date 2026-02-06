@@ -1,3 +1,5 @@
+"""Context management with output truncation and compression."""
+
 from __future__ import annotations
 
 
@@ -20,7 +22,7 @@ class ContextManager:
     lose the system prompt or early conversation history.
     """
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         system_prompt: str,
         task: str,

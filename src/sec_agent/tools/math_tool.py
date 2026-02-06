@@ -1,3 +1,5 @@
+"""Basic arithmetic tool."""
+
 from .base import Tool, ToolResult
 
 OPERATIONS = {
@@ -19,7 +21,13 @@ class MathTool(Tool):
         f"Supported operations: {', '.join(OPERATIONS)}."
     )
     parameters = {
-        "operation": {"type": "string", "description": f"The operation to perform: {', '.join(OPERATIONS)}"},
+        "operation": {
+            "type": "string",
+            "description": (
+                "The operation to perform: "
+                f"{', '.join(OPERATIONS)}"
+            ),
+        },
         "a": {"type": "number", "description": "The first operand"},
         "b": {"type": "number", "description": "The second operand"},
     }
@@ -31,7 +39,10 @@ class MathTool(Tool):
         b = kwargs.get("b")
 
         if a is None or b is None:
-            return ToolResult(output="Error: both operands 'a' and 'b' are required", success=False)
+            return ToolResult(
+                output="Error: both operands 'a' and 'b' are required",
+                success=False,
+            )
 
         try:
             a = float(a)
@@ -42,7 +53,10 @@ class MathTool(Tool):
         func = OPERATIONS.get(operation)
         if func is None:
             return ToolResult(
-                output=f"Error: unknown operation '{operation}'. Supported: {', '.join(OPERATIONS)}",
+                output=(
+                    f"Error: unknown operation '{operation}'. "
+                    f"Supported: {', '.join(OPERATIONS)}"
+                ),
                 success=False,
             )
 

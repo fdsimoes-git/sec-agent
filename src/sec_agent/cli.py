@@ -1,3 +1,5 @@
+"""Command-line interface for sec-agent."""
+
 import argparse
 
 from .agent import agent_loop
@@ -6,14 +8,27 @@ from .tools import default_registry
 
 
 def main() -> None:
+    """Parse arguments and start the agent loop."""
     parser = argparse.ArgumentParser(
         prog="sec-agent",
         description="Security assistant agent powered by local LLMs via Ollama",
     )
-    parser.add_argument("task", nargs="?", default=None, help="Task to perform (interactive if omitted)")
-    parser.add_argument("--model", default="qwen2.5-coder:7b", help="Ollama model to use (default: qwen2.5-coder:7b)")
-    parser.add_argument("--max-iterations", type=int, default=15, help="Max agent iterations (default: 15)")
-    parser.add_argument("--max-context-tokens", type=int, default=6000, help="Max context token budget (default: 6000)")
+    parser.add_argument(
+        "task", nargs="?", default=None,
+        help="Task to perform (interactive if omitted)",
+    )
+    parser.add_argument(
+        "--model", default="qwen2.5-coder:7b",
+        help="Ollama model to use (default: qwen2.5-coder:7b)",
+    )
+    parser.add_argument(
+        "--max-iterations", type=int, default=15,
+        help="Max agent iterations (default: 15)",
+    )
+    parser.add_argument(
+        "--max-context-tokens", type=int, default=6000,
+        help="Max context token budget (default: 6000)",
+    )
     args = parser.parse_args()
 
     provider = OllamaProvider(model=args.model)
@@ -28,4 +43,8 @@ def main() -> None:
             print("No task provided. Exiting.")
             return
 
-    agent_loop(task, provider, registry, max_iterations=args.max_iterations, max_context_tokens=args.max_context_tokens)
+    agent_loop(
+        task, provider, registry,
+        max_iterations=args.max_iterations,
+        max_context_tokens=args.max_context_tokens,
+    )

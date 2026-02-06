@@ -1,3 +1,5 @@
+"""Built-in tools and registry factory."""
+
 from .base import Tool, ToolRegistry, ToolResult
 from .bash_tool import BashTool
 from .done import DoneTool

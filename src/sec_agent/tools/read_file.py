@@ -1,3 +1,5 @@
+"""File reading tool."""
+
 import os
 
 from .base import Tool, ToolResult
@@ -7,10 +9,20 @@ class ReadFileTool(Tool):
     """Read contents of a file from the filesystem."""
 
     name = "read_file"
-    description = "Read and return the contents of a file. Useful for inspecting config files, source code, logs, and other text files."
+    description = (
+        "Read and return the contents of a file. Useful for inspecting "
+        "config files, source code, logs, and other text files."
+    )
     parameters = {
-        "path": {"type": "string", "description": "Absolute or relative file path to read"},
-        "max_lines": {"type": "integer", "description": "Maximum number of lines to return (default: all)", "default": 0},
+        "path": {
+            "type": "string",
+            "description": "Absolute or relative file path to read",
+        },
+        "max_lines": {
+            "type": "integer",
+            "description": "Maximum number of lines to return (default: all)",
+            "default": 0,
+        },
     }
     requires_approval = True
 
@@ -30,7 +42,7 @@ class ReadFileTool(Tool):
             return ToolResult(output=f"Error: not a file: {path}", success=False)
 
         try:
-            with open(path, "r", errors="replace") as f:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
                 if max_lines > 0:
                     lines = []
                     for i, line in enumerate(f):
@@ -41,5 +53,5 @@ class ReadFileTool(Tool):
                 else:
                     content = f.read()
             return ToolResult(output=content if content else "(empty file)")
-        except Exception as e:
-            return ToolResult(output=f"Error reading file: {e}", success=False)
+        except OSError as exc:
+            return ToolResult(output=f"Error reading file: {exc}", success=False)
