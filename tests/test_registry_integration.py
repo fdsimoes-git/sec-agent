@@ -6,7 +6,7 @@ from sec_agent.tools import default_registry
 class TestDefaultRegistry:
     def test_all_builtin_tools_registered(self, registry):
         names = {t.name for t in registry.list_tools()}
-        assert names == {"bash", "read_file", "write_file", "http_request", "done"}
+        assert names == {"bash", "read_file", "write_file", "http_request", "math", "done"}
 
     def test_all_tools_have_required_attrs(self, registry):
         for tool in registry.list_tools():
@@ -17,7 +17,7 @@ class TestDefaultRegistry:
 
     def test_all_tools_produce_valid_schema(self, registry):
         schemas = registry.schema()
-        assert len(schemas) == 5
+        assert len(schemas) == 6
         for s in schemas:
             assert "name" in s
             assert "description" in s
