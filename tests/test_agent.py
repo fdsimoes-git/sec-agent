@@ -26,7 +26,6 @@ class TestAgentLoop:
         """Agent exits cleanly when LLM calls done immediately."""
         provider = FakeProvider([done_action("nothing to do")])
         registry = default_registry()
-        # Empty input on follow-up prompt means quit
         monkeypatch.setattr("builtins.input", lambda _: "")
         agent_loop("do something", provider, registry, max_iterations=5)
 
@@ -52,7 +51,6 @@ class TestAgentLoop:
             done_action("ran the command"),
         ])
         registry = default_registry()
-        # First input: approve the tool call. Second: quit after done.
         inputs = iter(["y", ""])
         monkeypatch.setattr("builtins.input", lambda _: next(inputs))
         agent_loop("echo test", provider, registry, max_iterations=5)
@@ -96,7 +94,6 @@ class TestAgentLoop:
         monkeypatch.setattr("builtins.input", lambda _: "")
         agent_loop("do something", provider, registry, max_iterations=5)
         out = capsys.readouterr().out
-        # Agent should recover: warn about bad JSON, then done on next turn
         assert "could not parse" in out.lower()
         assert "gave up" in out.lower()
 
@@ -115,7 +112,6 @@ class TestAgentLoop:
 
     def test_max_iterations(self, monkeypatch, capsys):
         """Agent stops at max iterations."""
-        # Always returns plain text, user always replies
         provider = FakeProvider(["thinking..." for _ in range(10)])
         registry = default_registry()
         monkeypatch.setattr("builtins.input", lambda _: "continue")
@@ -143,10 +139,37 @@ class TestAgentLoop:
         """The done tool should not prompt for approval."""
         provider = FakeProvider([done_action("all finished")])
         registry = default_registry()
-        # Only one input call should happen: the follow-up prompt
         monkeypatch.setattr("builtins.input", lambda _: "")
         agent_loop("do something", provider, registry, max_iterations=5)
         out = capsys.readouterr().out
         assert "all finished" in out
-        # Should NOT contain approval prompt text
         assert "Execute?" not in out
+
+    def test_large_output_is_truncated_in_context(self, monkeypatch, capsys):
+        """Large tool outputs should be truncated in the context sent to LLM."""
+        # Use a FakeProvider that captures the messages it receives
+        received_messages = []
+
+        class CapturingProvider(ModelProvider):
+            def __init__(self, responses):
+                self._responses = iter(responses)
+
+            def chat(self, messages):
+                received_messages.append(list(messages))
+                return next(self._responses)
+
+        action = json.dumps({"tool": "bash", "args": {"command": "echo " + "x" * 5000}})
+        provider = CapturingProvider([
+            f"ACTION: {action}",
+            done_action("done"),
+        ])
+        registry = default_registry()
+        inputs = iter(["y", ""])
+        monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+        agent_loop("test", provider, registry, max_iterations=5, max_context_tokens=100000)
+
+        # The second call to chat should have the tool result truncated
+        second_call_msgs = received_messages[1]
+        tool_result_msg = [m for m in second_call_msgs if "Tool 'bash' output:" in m["content"]]
+        assert len(tool_result_msg) == 1
+        assert "truncated" in tool_result_msg[0]["content"]
