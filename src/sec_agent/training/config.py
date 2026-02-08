@@ -31,5 +31,25 @@ class TrainingConfig:
     # Dataset
     dataset_size: int = 500
 
+    # Memory
+    low_memory: bool = False
+
     # Verbosity
     verbose: bool = False
+
+    @classmethod
+    def low_memory_preset(cls, **overrides) -> "TrainingConfig":
+        """Return a config tuned for machines with 8GB RAM or less.
+
+        Uses a smaller 1.5B model, reduces num_generations, max_seq_length,
+        and lora_rank to fit comfortably in 8GB unified memory.
+        """
+        defaults = {
+            "low_memory": True,
+            "model_name": "mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit",
+            "num_generations": 2,
+            "max_seq_length": 512,
+            "lora_rank": 8,
+        }
+        defaults.update(overrides)
+        return cls(**defaults)

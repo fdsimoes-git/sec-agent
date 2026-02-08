@@ -2,9 +2,11 @@
 
 Implements Group Relative Policy Optimization with a custom training loop
 using mlx and mlx-lm — no PyTorch, no CUDA dependencies.
+
+Memory-efficient: uses a single base model with LoRA weight swapping
+instead of keeping three full model copies in RAM.
 """
 
-import copy
 import random
 import time
 from pathlib import Path
@@ -12,7 +14,7 @@ from pathlib import Path
 import mlx.core as mx
 import mlx.nn as nn
 import mlx.optimizers as optim
-from mlx.utils import tree_map
+from mlx.utils import tree_flatten, tree_map
 
 from .config import TrainingConfig
 from .rewards import (
@@ -37,14 +39,54 @@ LORA_KEYS = [
 ]
 
 
+def _get_lora_weights(model) -> list:
+    """Extract only LoRA adapter parameters (lora_a, lora_b) from the model.
+
+    Returns a deep copy of the LoRA weight pairs, independent of future
+    model updates.  Only copies the tiny adapter matrices (~few MB), NOT
+    the base model weights.
+    """
+    pairs = [
+        (k, mx.array(v))
+        for k, v in tree_flatten(model.trainable_parameters())
+        if "lora_a" in k or "lora_b" in k
+    ]
+    mx.eval([v for _, v in pairs])
+    return pairs
+
+
+def _clear_cache():
+    """Release unused GPU memory back to the system (no-op on CPU)."""
+    if mx.default_device() == mx.cpu:
+        return
+    try:
+        if hasattr(mx, "clear_cache"):
+            mx.clear_cache()
+        elif hasattr(mx.metal, "clear_cache"):
+            mx.metal.clear_cache()
+    except Exception:
+        pass
+
+
+def _swap_lora_weights(model, weights: list):
+    """Load a saved set of LoRA adapter weights into the model."""
+    model.load_weights(weights, strict=False)
+    # Only evaluate the swapped LoRA weights, not the entire model.
+    mx.eval([v for _, v in weights])
+
+
 def load_model(config: TrainingConfig):
     """Load a model + tokenizer from MLX-community and apply LoRA.
 
+    Uses a single base model with separate LoRA weight snapshots for
+    the rollout policy and frozen reference, instead of deep-copying
+    the entire model three times.
+
     Returns:
-        Tuple of (model, model_old, ref_model, tokenizer) where:
+        Tuple of (model, old_weights, ref_weights, tokenizer) where:
         - model: trainable policy with LoRA adapters
-        - model_old: rollout policy (periodically synced from model)
-        - ref_model: frozen reference for KL penalty
+        - old_weights: LoRA weight snapshot for rollout policy
+        - ref_weights: frozen LoRA weight snapshot for KL penalty
         - tokenizer: the tokenizer
     """
     from mlx_lm import load
@@ -62,16 +104,21 @@ def load_model(config: TrainingConfig):
     }
     linear_to_lora_layers(model, num_layers, lora_config)
 
-    # Deep copy for rollout policy and reference model.
-    model_old = copy.deepcopy(model)
-    ref_model = copy.deepcopy(model)
-    ref_model.freeze()
+    # Freeze base model weights so only LoRA adapters are trainable.
+    model.freeze()
+    model.unfreeze(keys=["lora_a", "lora_b"])
+
+    # Snapshot the initial LoRA weights for reference and rollout.
+    # Only copies lora_a/lora_b matrices (~few MB), not base model weights.
+    ref_weights = _get_lora_weights(model)
+    old_weights = _get_lora_weights(model)
+    _clear_cache()
 
     # Ensure pad token exists.
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    return model, model_old, ref_model, tokenizer
+    return model, old_weights, ref_weights, tokenizer
 
 
 def generate_completions(model, tokenizer, prompt_text: str,
@@ -79,7 +126,7 @@ def generate_completions(model, tokenizer, prompt_text: str,
     """Generate multiple completions for a prompt using the rollout model.
 
     Args:
-        model: The rollout model (model_old).
+        model: The model (caller should swap in rollout weights first).
         tokenizer: The tokenizer.
         prompt_text: Formatted prompt string.
         config: Training config with temperature and num_generations.
@@ -111,6 +158,9 @@ def compute_log_probs(model, tokenizer, prompt_text: str,
                       completion: str) -> mx.array:
     """Compute log-probability of a completion given a prompt.
 
+    Uses vectorized indexing to extract only the needed log-probs,
+    avoiding Python loops over the large logits tensor.
+
     Args:
         model: The language model.
         tokenizer: The tokenizer.
@@ -127,16 +177,23 @@ def compute_log_probs(model, tokenizer, prompt_text: str,
     input_ids = mx.array(full_tokens)[None, :]  # (1, seq_len)
     logits = model(input_ids)  # (1, seq_len, vocab_size)
 
-    # Log-softmax over vocabulary dimension.
-    log_probs = logits - mx.logsumexp(logits, axis=-1, keepdims=True)
-
-    # Extract log-probs for the completion tokens only.
+    # Build index arrays for the completion token positions.
     prompt_len = len(prompt_tokens)
-    total_log_prob = mx.array(0.0)
+    positions = []
+    token_ids = []
     for i, token_id in enumerate(completion_tokens):
         pos = prompt_len + i - 1  # logit at position t predicts token t+1
-        if 0 <= pos < log_probs.shape[1]:
-            total_log_prob = total_log_prob + log_probs[0, pos, token_id]
+        if 0 <= pos < logits.shape[1]:
+            positions.append(pos)
+            token_ids.append(token_id)
+
+    if not positions:
+        return mx.array(0.0)
+
+    # Extract only the logits at positions we need, then log-softmax.
+    pos_logits = logits[0, mx.array(positions), :]  # (n_tokens, vocab_size)
+    log_probs = pos_logits - mx.logsumexp(pos_logits, axis=-1, keepdims=True)
+    total_log_prob = mx.sum(log_probs[mx.arange(len(token_ids)), mx.array(token_ids)])
 
     return total_log_prob
 
@@ -170,19 +227,28 @@ def compute_advantages(rewards_per_completion: list[float]) -> list[float]:
     return [(r - mean_r) / (std_r + eps) for r in rewards_per_completion]
 
 
-def train_step(model, ref_model, model_old, tokenizer,
-               prompt_messages, config: TrainingConfig):
+def train_step(model, old_weights, ref_weights, tokenizer,
+               prompt_messages, config: TrainingConfig,
+               current_weights=None):
     """Execute one GRPO training step for a single prompt.
+
+    Uses LoRA weight swapping to avoid keeping three full models in memory.
+    Pre-computes old/ref log-probs outside the gradient tape to reduce
+    peak memory during backprop.
 
     Returns:
         Tuple of (loss_value, gradients, metrics_dict).
     """
     prompt_text = _format_prompt(tokenizer, prompt_messages)
 
-    # 1. Generate completions using the rollout model.
-    completions = generate_completions(
-        model_old, tokenizer, prompt_text, config,
-    )
+    # Save current training weights before swapping.
+    if current_weights is None:
+        current_weights = _get_lora_weights(model)
+
+    # 1. Generate completions using the rollout model (old weights).
+    _swap_lora_weights(model, old_weights)
+    completions = generate_completions(model, tokenizer, prompt_text, config)
+    _clear_cache()
 
     # 2. Score completions with all reward functions.
     formatted = [[{"content": c}] for c in completions]
@@ -201,15 +267,28 @@ def train_step(model, ref_model, model_old, tokenizer,
     # 3. Compute advantages.
     advantages = compute_advantages(total_rewards)
 
-    # 4. Compute old log-probs (under rollout model).
+    # 4. Compute old log-probs (under rollout model) — outside gradient tape.
+    #    old_weights are already loaded from step 1.
     old_log_probs = []
     for comp in completions:
-        lp = compute_log_probs(model_old, tokenizer, prompt_text, comp)
+        lp = compute_log_probs(model, tokenizer, prompt_text, comp)
         old_log_probs.append(lp)
+    mx.eval(old_log_probs)
+    _clear_cache()
 
-    # 5. Define loss function for gradient computation.
-    # nn.value_and_grad calls fn() with no args; the model is captured
-    # from the closure and its trainable params are differentiated.
+    # 5. Compute ref log-probs (under reference model) — outside gradient tape.
+    _swap_lora_weights(model, ref_weights)
+    ref_log_probs = []
+    for comp in completions:
+        lp = compute_log_probs(model, tokenizer, prompt_text, comp)
+        ref_log_probs.append(lp)
+    mx.eval(ref_log_probs)
+    _clear_cache()
+
+    # 6. Restore current training weights for gradient computation.
+    _swap_lora_weights(model, current_weights)
+
+    # 7. Define loss function — only new_log_probs computed inside gradient tape.
     def loss_fn():
         total_loss = mx.array(0.0)
         count = 0
@@ -219,8 +298,8 @@ def train_step(model, ref_model, model_old, tokenizer,
                 continue
 
             new_lp = compute_log_probs(model, tokenizer, prompt_text, comp)
-            ref_lp = compute_log_probs(ref_model, tokenizer, prompt_text, comp)
             old_lp = old_log_probs[i]
+            ref_lp = ref_log_probs[i]
 
             # Policy ratio.
             ratio = mx.exp(new_lp - old_lp)
@@ -244,7 +323,7 @@ def train_step(model, ref_model, model_old, tokenizer,
 
         return total_loss
 
-    # 6. Compute gradients.
+    # 8. Compute gradients.
     loss_and_grad_fn = nn.value_and_grad(model, loss_fn)
     loss_val, grads = loss_and_grad_fn()
 
@@ -270,10 +349,23 @@ def train_step(model, ref_model, model_old, tokenizer,
     return loss_val, grads, metrics
 
 
-def sync_models(source, target):
-    """Copy weights from source model to target model."""
-    target.load_weights(list(source.parameters().items()))
-    mx.eval(target.parameters())
+def sync_models(model) -> dict:
+    """Snapshot current LoRA weights for use as rollout model."""
+    return _get_lora_weights(model)
+
+
+def _configure_memory(config: TrainingConfig):
+    """Configure MLX device and memory for the training environment.
+
+    In low-memory mode, switches to CPU to avoid Metal GPU memory pressure
+    from other processes (IDE, browser, OS). On Apple Silicon the CPU still
+    uses the unified memory pool but bypasses Metal's command-buffer
+    allocator, which is the typical OOM failure point on 8 GB machines.
+    """
+    if not config.low_memory:
+        return
+    mx.set_default_device(mx.cpu)
+    print("Low-memory mode: using CPU backend (Metal GPU bypassed)")
 
 
 def run_training(config: TrainingConfig, export_gguf: bool = False):
@@ -283,8 +375,9 @@ def run_training(config: TrainingConfig, export_gguf: bool = False):
         config: Training configuration.
         export_gguf: Whether to fuse and export after training.
     """
+    _configure_memory(config)
     print(f"Loading model: {config.model_name}")
-    model, model_old, ref_model, tokenizer = load_model(config)
+    model, old_weights, ref_weights, tokenizer = load_model(config)
 
     print(f"Building dataset ({config.dataset_size} examples)...")
     dataset = build_dataset(size=config.dataset_size)
@@ -296,6 +389,9 @@ def run_training(config: TrainingConfig, export_gguf: bool = False):
     print(f"  Clip epsilon: {config.clip_eps}")
     print(f"  KL coefficient: {config.kl_coeff}")
     print(f"  Gradient accumulation: {config.grad_accumulation_steps}")
+    if config.low_memory:
+        print(f"  Low-memory mode: ON (seq={config.max_seq_length}, "
+              f"rank={config.lora_rank}, gens={config.num_generations})")
     print()
 
     step = 0
@@ -314,7 +410,7 @@ def run_training(config: TrainingConfig, export_gguf: bool = False):
 
             t0 = time.time()
             _loss_val, grads, metrics = train_step(
-                model, ref_model, model_old, tokenizer,
+                model, old_weights, ref_weights, tokenizer,
                 prompt_messages, config,
             )
             dt = time.time() - t0
@@ -339,7 +435,7 @@ def run_training(config: TrainingConfig, export_gguf: bool = False):
 
             # Sync rollout model periodically.
             if (step + 1) % config.sync_interval == 0:
-                sync_models(model, model_old)
+                old_weights = sync_models(model)
 
             step += 1
 
