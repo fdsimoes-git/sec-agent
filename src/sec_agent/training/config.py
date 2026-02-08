@@ -41,7 +41,7 @@ class TrainingConfig:
     def low_memory_preset(cls, **overrides) -> "TrainingConfig":
         """Return a config tuned for machines with 8GB RAM or less.
 
-        Uses a smaller 1.5B model, reduces num_generations, max_seq_length,
+        Uses a smaller 0.5B model, reduces num_generations, max_seq_length,
         and lora_rank to fit comfortably in 8GB unified memory.
         """
         defaults = {

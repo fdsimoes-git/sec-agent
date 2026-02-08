@@ -1,7 +1,5 @@
 """Tests for GRPO reward functions."""
 
-import pytest
-
 from sec_agent.training.rewards import (
     _extract_action,
     command_quality_reward,

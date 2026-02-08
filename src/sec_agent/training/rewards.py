@@ -10,8 +10,7 @@ a single assistant message dict with a "content" key.
 import json
 import re
 
-# Reuse the existing ACTION pattern from the agent codebase.
-ACTION_PATTERN = re.compile(r"ACTION:\s*(\{.*\})", re.DOTALL)
+from sec_agent.prompts import ACTION_PATTERN
 
 VALID_TOOLS = {"bash", "read_file", "write_file", "http_request", "math", "done"}
 

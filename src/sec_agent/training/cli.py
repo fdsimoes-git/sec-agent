@@ -14,7 +14,7 @@ def main():
     parser.add_argument(
         "--model",
         default=None,
-        help="MLX model name or path (default: 3B, or 1.5B with --low-memory)",
+        help="MLX model name or path (default: 3B, or 0.5B with --low-memory)",
     )
     parser.add_argument(
         "--lora-rank",

@@ -65,6 +65,7 @@ def _clear_cache():
         elif hasattr(mx.metal, "clear_cache"):
             mx.metal.clear_cache()
     except Exception:
+        # Best-effort cache clear: failures are non-fatal and can be safely ignored.
         pass
 
 
@@ -149,6 +150,10 @@ def generate_completions(model, tokenizer, prompt_text: str,
             max_tokens=max_tokens,
             sampler=sampler,
         )
+        # Some generate() APIs return the full prompt+completion text.
+        # Ensure we only keep the newly generated completion portion.
+        if isinstance(output, str) and output.startswith(prompt_text):
+            output = output[len(prompt_text):]
         completions.append(output)
 
     return completions
@@ -349,7 +354,7 @@ def train_step(model, old_weights, ref_weights, tokenizer,
     return loss_val, grads, metrics
 
 
-def sync_models(model) -> dict:
+def sync_models(model) -> list:
     """Snapshot current LoRA weights for use as rollout model."""
     return _get_lora_weights(model)
 
