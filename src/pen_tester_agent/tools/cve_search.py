@@ -1,6 +1,7 @@
 """CVE search tool for vulnerability lookups."""
 
 import re
+from urllib.parse import quote
 
 import httpx
 
@@ -45,7 +46,7 @@ class CveSearchTool(Tool):
             return ToolResult(output="Error: no query provided", success=False)
 
         try:
-            max_results = int(max_results)
+            max_results = max(1, int(max_results))
         except (TypeError, ValueError):
             max_results = 5
 
@@ -71,7 +72,7 @@ class CveSearchTool(Tool):
 
     def _search_keyword(self, keyword: str, max_results: int) -> ToolResult:
         """Search CVEs by keyword/product name."""
-        url = f"{_CIRCL_API_BASE}/search/{keyword}"
+        url = f"{_CIRCL_API_BASE}/search/{quote(keyword, safe='')}"
         try:
             with httpx.Client(timeout=_REQUEST_TIMEOUT) as client:
                 resp = client.get(url)

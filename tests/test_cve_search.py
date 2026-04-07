@@ -105,6 +105,19 @@ class TestCveSearchTool:
         assert "CVE-2021-1" in r.output
         assert "CVE-2021-2" not in r.output
 
+    def test_max_results_clamped_to_minimum_one(self, cve_tool, httpx_mock):
+        entries = [
+            {"id": f"CVE-2021-{i}", "summary": f"Vuln {i}", "cvss": 5.0}
+            for i in range(5)
+        ]
+        httpx_mock.add_response(
+            url="https://cve.circl.lu/api/search/test",
+            json=entries,
+        )
+        r = cve_tool.execute(query="test", max_results=0)
+        assert r.success is True
+        assert "CVE-2021-0" in r.output  # at least 1 result returned
+
     def test_connection_error(self, cve_tool, httpx_mock):
         httpx_mock.add_exception(httpx.ConnectError("connection refused"))
         r = cve_tool.execute(query="CVE-2021-44228")
