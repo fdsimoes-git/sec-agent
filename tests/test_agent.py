@@ -25,7 +25,8 @@ class TestAgentLoop:
         """Agent exits cleanly when LLM calls done immediately."""
         provider = FakeProvider([done_action("nothing to do")])
         registry = default_registry()
-        monkeypatch.setattr("builtins.input", lambda _: "")
+        # follow-up menu: "2" = Quit
+        monkeypatch.setattr("builtins.input", lambda _: "2")
         agent_loop("do something", provider, registry, max_iterations=5)
 
     def test_done_with_followup(self, monkeypatch, capsys):
@@ -35,7 +36,8 @@ class TestAgentLoop:
             done_action("also counted them"),
         ])
         registry = default_registry()
-        inputs = iter(["count them too", ""])
+        # "0" = Continue chatting, "count them too" = task text, "2" = Quit
+        inputs = iter(["0", "count them too", "2"])
         monkeypatch.setattr("builtins.input", lambda _: next(inputs))
         agent_loop("list files", provider, registry, max_iterations=5)
         out = capsys.readouterr().out
@@ -50,7 +52,8 @@ class TestAgentLoop:
             done_action("ran the command"),
         ])
         registry = default_registry()
-        inputs = iter(["y", ""])
+        # "0" = Approve tool, "2" = Quit follow-up
+        inputs = iter(["0", "2"])
         monkeypatch.setattr("builtins.input", lambda _: next(inputs))
         agent_loop("echo test", provider, registry, max_iterations=5)
         out = capsys.readouterr().out
@@ -64,7 +67,8 @@ class TestAgentLoop:
             done_action("understood, cancelled"),
         ])
         registry = default_registry()
-        inputs = iter(["n", ""])
+        # "1" = Reject tool, "2" = Quit follow-up
+        inputs = iter(["1", "2"])
         monkeypatch.setattr("builtins.input", lambda _: next(inputs))
         agent_loop("do something dangerous", provider, registry, max_iterations=5)
         out = capsys.readouterr().out
@@ -78,7 +82,8 @@ class TestAgentLoop:
             done_action("ok nevermind"),
         ])
         registry = default_registry()
-        monkeypatch.setattr("builtins.input", lambda _: "")
+        # "2" = Quit follow-up
+        monkeypatch.setattr("builtins.input", lambda _: "2")
         agent_loop("do something", provider, registry, max_iterations=5)
         out = capsys.readouterr().out
         assert "Unknown tool" in out
@@ -90,7 +95,8 @@ class TestAgentLoop:
             done_action("gave up"),
         ])
         registry = default_registry()
-        monkeypatch.setattr("builtins.input", lambda _: "")
+        # "2" = Quit follow-up
+        monkeypatch.setattr("builtins.input", lambda _: "2")
         agent_loop("do something", provider, registry, max_iterations=5)
         out = capsys.readouterr().out
         assert "could not parse" in out.lower()
@@ -103,7 +109,8 @@ class TestAgentLoop:
             done_action("ok, quitting"),
         ])
         registry = default_registry()
-        inputs = iter(["192.168.1.1", ""])
+        # "0" = Reply, "192.168.1.1" = text, "2" = Quit follow-up
+        inputs = iter(["0", "192.168.1.1", "2"])
         monkeypatch.setattr("builtins.input", lambda _: next(inputs))
         agent_loop("scan something", provider, registry, max_iterations=5)
         out = capsys.readouterr().out
@@ -113,7 +120,9 @@ class TestAgentLoop:
         """Agent stops at max iterations."""
         provider = FakeProvider(["thinking..." for _ in range(10)])
         registry = default_registry()
-        monkeypatch.setattr("builtins.input", lambda _: "continue")
+        # "0" = Reply, "continue" = text
+        inputs = iter(["0", "continue"] * 10)
+        monkeypatch.setattr("builtins.input", lambda _: next(inputs))
         agent_loop("loop forever", provider, registry, max_iterations=3)
         out = capsys.readouterr().out
         assert "maximum iterations" in out.lower()
@@ -128,7 +137,8 @@ class TestAgentLoop:
             done_action("read the file"),
         ])
         registry = default_registry()
-        inputs = iter(["y", ""])
+        # "0" = Approve tool, "2" = Quit follow-up
+        inputs = iter(["0", "2"])
         monkeypatch.setattr("builtins.input", lambda _: next(inputs))
         agent_loop("read that file", provider, registry, max_iterations=5)
         out = capsys.readouterr().out
@@ -138,11 +148,12 @@ class TestAgentLoop:
         """The done tool should not prompt for approval."""
         provider = FakeProvider([done_action("all finished")])
         registry = default_registry()
-        monkeypatch.setattr("builtins.input", lambda _: "")
+        # "2" = Quit follow-up
+        monkeypatch.setattr("builtins.input", lambda _: "2")
         agent_loop("do something", provider, registry, max_iterations=5)
         out = capsys.readouterr().out
         assert "all finished" in out
-        assert "Execute?" not in out
+        assert "Approve" not in out
 
     def test_large_output_is_truncated_in_context(self, monkeypatch, capsys):
         """Large tool outputs should be truncated in the context sent to LLM."""
@@ -163,7 +174,8 @@ class TestAgentLoop:
             done_action("done"),
         ])
         registry = default_registry()
-        inputs = iter(["y", ""])
+        # "0" = Approve tool, "2" = Quit follow-up
+        inputs = iter(["0", "2"])
         monkeypatch.setattr("builtins.input", lambda _: next(inputs))
         agent_loop("test", provider, registry, max_iterations=5, max_context_tokens=100000)
 

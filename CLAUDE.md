@@ -31,7 +31,9 @@ Package manager is `uv`. Python 3.11+.
 
 ## Architecture
 
-**Agent loop** (`agent.py`): Orchestrates the cycle of LLM reasoning → ACTION JSON extraction → user approval → tool execution → result feedback. The LLM responds with free-text reasoning followed by `ACTION: {"tool": "...", "args": {...}}` which is parsed via regex.
+**Agent loop** (`agent.py`): Orchestrates the cycle of LLM reasoning → ACTION JSON extraction → user approval → tool execution → result feedback. The LLM responds with free-text reasoning followed by `ACTION: {"tool": "...", "args": {...}}` which is parsed via `find_action()` (brace-depth JSON extractor that handles nested objects, markdown code blocks, and multiple ACTION blocks). Bash commands stream output live via `_execute_bash_streaming()` using `select`-based polling. Non-bash tools run with a spinner. LLM calls also show a spinner. Tool timeout is 120s with partial output capture on expiry.
+
+**UI layer** (`ui.py`): All terminal output goes through `rich` (panels, markdown rendering, themed colors). Interactive menus use `simple-term-menu` for arrow-key navigation. Falls back to numbered input in non-TTY environments (tests). Every user interaction point offers quit and generate-report options.
 
 **Provider abstraction** (`providers/`): `ModelProvider` ABC decouples the agent from LLM backends. Currently only `OllamaProvider` (default model: `qwen2.5-coder:3b`). Adding a new provider means implementing a single `chat(messages) -> str` method.
 
@@ -39,15 +41,15 @@ Package manager is `uv`. Python 3.11+.
 
 **Context management** (`context.py`): Keeps the LLM context within a token budget by compressing older tool outputs into summary snippets while always preserving the system prompt, original task, and the most recent messages.
 
-**Executor** (`executor.py`): Handles the interactive user approval flow (approve / reject / edit-args-as-JSON) before any tool runs.
+**Executor** (`executor.py`): Thin wrapper that delegates to `ui.show_tool_approval_flow()` for the interactive approval menu.
 
-**Prompts** (`prompts.py`): Builds the system prompt dynamically from the tool registry, defining six pen-testing domains and the ACTION response format.
+**Prompts** (`prompts.py`): Builds the system prompt dynamically from the tool registry, defining six pen-testing domains and the ACTION response format. `find_action()` handles inline JSON, markdown code blocks, and colon-less ACTION formats.
 
 **Training module** (`training/`): MLX GRPO fine-tuning on Apple Silicon. Uses LoRA weight swapping (single base model, no 3-model copies) for 8GB memory efficiency. Reward functions score format compliance, tool selection, command quality, and explanation quality.
 
 ## Testing
 
-Tests use `FakeProvider` to mock LLM responses, `monkeypatch` for user input, and `pytest-httpx` for HTTP mocking. The `default_registry()` fixture in `conftest.py` provides a standard tool set.
+Tests use `FakeProvider` to mock LLM responses, `monkeypatch` for user input, and `pytest-httpx` for HTTP mocking. The `default_registry()` fixture in `conftest.py` provides a standard tool set. Arrow-key menus fall back to numbered input (`"0"` = first option, `"1"` = second, etc.) in non-TTY test environments.
 
 ## CI
 

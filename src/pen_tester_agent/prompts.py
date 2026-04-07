@@ -5,7 +5,85 @@ import re
 from .tools.base import ToolRegistry
 
 
-ACTION_PATTERN = re.compile(r"ACTION:\s*(\{.*\})", re.DOTALL)
+ACTION_PATTERN = re.compile(r"ACTION:\s*(\{.*?\})\s*$", re.MULTILINE)
+
+
+def _extract_json_object(text, start):
+    """Extract a complete JSON object from text starting at a '{'.
+
+    Counts brace depth to handle nested objects correctly.
+    Returns the JSON substring or None if braces are unbalanced.
+    """
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        char = text[i]
+        if escape:
+            escape = False
+            continue
+        if char == "\\":
+            if in_string:
+                escape = True
+            continue
+        if char == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:i + 1]
+    return None
+
+
+def find_action(content):
+    """Find and extract the first ACTION JSON object from LLM output.
+
+    Handles multiple formats:
+    - ACTION: {"tool": ...}           (inline)
+    - ACTION:\\n```json\\n{...}\\n```   (markdown code block)
+    - ACTION:\\n{...}                  (newline-separated)
+
+    Returns a match-like object with group(1) containing the JSON,
+    or None if no valid ACTION block is found.
+    """
+    # Find "ACTION" optionally followed by ":" and whitespace
+    action_re = re.compile(r"ACTION:?\s*", re.IGNORECASE)
+    match = action_re.search(content)
+    if not match:
+        return None
+
+    after = content[match.end():]
+
+    # Strip optional markdown code fence (```json or ```)
+    fence_re = re.compile(r"^```(?:json)?\s*\n?")
+    after = fence_re.sub("", after)
+
+    # Find the first '{' in the remaining text
+    brace_pos = after.find("{")
+    if brace_pos == -1:
+        return None
+
+    json_str = _extract_json_object(after, brace_pos)
+    if json_str is None:
+        return None
+
+    return _ActionMatch(json_str)
+
+
+class _ActionMatch:
+    """Lightweight match-like wrapper for extracted ACTION JSON."""
+
+    def __init__(self, json_str):
+        self._json = json_str
+
+    def group(self, n):  # pylint: disable=unused-argument
+        """Return the captured JSON string."""
+        return self._json
 
 
 def build_system_prompt(registry: ToolRegistry) -> str:

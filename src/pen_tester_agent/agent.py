@@ -1,15 +1,154 @@
 """Core agent loop that orchestrates tool calls via an LLM."""
 
 import json
+import select
+import subprocess
+import sys
 
 from .context import ContextManager
-from .executor import ask_tool_approval
-from .prompts import ACTION_PATTERN, build_system_prompt
+from .prompts import find_action, build_system_prompt
 from .providers.base import ModelProvider
-from .tools.base import ToolRegistry
+from .tools.base import ToolRegistry, ToolResult
+from . import ui
+
+TOOL_TIMEOUT = 120
 
 
-def _handle_action(content, action_match, ctx, registry):
+def _execute_bash_streaming(approved_args):
+    """Execute a bash command with live-streamed output."""
+    command = approved_args.get("command", "")
+    timeout = approved_args.get("timeout", TOOL_TIMEOUT)
+    if not command:
+        return ToolResult(output="Error: no command provided", success=False)
+
+    try:
+        proc = subprocess.Popen(
+            command, shell=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        lines = []
+        import time
+        start = time.monotonic()
+
+        while True:
+            elapsed = time.monotonic() - start
+            remaining = timeout - elapsed
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(command, timeout)
+
+            # Use select to poll stdout/stderr without blocking
+            readable = []
+            streams = []
+            if proc.stdout:
+                streams.append(proc.stdout)
+            if proc.stderr:
+                streams.append(proc.stderr)
+
+            if sys.platform != "win32" and streams:
+                readable, _, _ = select.select(streams, [], [], 0.1)
+            else:
+                import time as _t
+                _t.sleep(0.1)
+                readable = streams
+
+            for stream in readable:
+                line = stream.readline()
+                if line:
+                    lines.append(line)
+                    ui.stream_line(line)
+
+            if proc.poll() is not None:
+                # Process finished — drain remaining output
+                if proc.stdout:
+                    for line in proc.stdout:
+                        lines.append(line)
+                        ui.stream_line(line)
+                if proc.stderr:
+                    for line in proc.stderr:
+                        lines.append(line)
+                        ui.stream_line(line)
+                break
+
+        output = "".join(lines)
+        return ToolResult(output=output if output else "(no output)")
+
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        stdout_partial, stderr_partial = proc.communicate()
+        partial = ""
+        if stdout_partial:
+            partial += stdout_partial
+        if stderr_partial:
+            if partial:
+                partial += "\n"
+            partial += stderr_partial
+        msg = f"Command timed out after {timeout}s."
+        if partial:
+            msg += f"\nPartial output:\n{partial}"
+        return ToolResult(output=msg, success=False)
+    except OSError as exc:
+        return ToolResult(output=f"Error: {exc}", success=False)
+
+
+def _execute_with_timeout(tool, approved_args):
+    """Execute a tool with appropriate UI feedback."""
+    if tool.name == "bash":
+        return _execute_bash_streaming(approved_args)
+    with ui.spinner_tool(tool.name):
+        return tool.execute(**approved_args)
+
+
+def _generate_report(ctx, provider, registry, max_context_tokens):
+    """Generate a report based on the current session context."""
+    history = ""
+    for msg in ctx.get_messages():
+        if msg["role"] == "system":
+            continue
+        history += f"[{msg['role']}]: {msg['content']}\n\n"
+
+    report_task = (
+        "Based on the penetration testing session below, write a professional "
+        "penetration test report in the following structure:\n\n"
+        "1. EXECUTIVE SUMMARY — High-level overview of the engagement scope, "
+        "approach, and key findings.\n"
+        "2. SCOPE & METHODOLOGY — Target systems, tools used, and testing "
+        "methodology.\n"
+        "3. FINDINGS — Each finding as a numbered item with: description, "
+        "affected host/service, evidence (include exact command outputs), "
+        "severity (Critical/High/Medium/Low/Info), and any CVE references.\n"
+        "4. RECOMMENDATIONS — Prioritised remediation steps for each finding.\n"
+        "5. CONCLUSION — Summary of the overall security posture.\n\n"
+        "Include ALL relevant tool outputs, port scan results, service "
+        "versions, error messages, and any other evidence gathered during "
+        "the session. Be thorough and specific — do not omit findings.\n\n"
+        f"--- Session History ---\n{history}"
+    )
+    report_ctx = ContextManager(
+        build_system_prompt(registry), report_task,
+        max_context_tokens=max_context_tokens,
+    )
+
+    path = ui.prompt_report_path()
+    with ui.spinner_llm():
+        content = provider.chat(report_ctx.get_messages())
+
+    # Strip any ACTION blocks from the response — we just want the text
+    report_text = content
+    action_match = find_action(content)
+    if action_match:
+        idx = content.find("ACTION")
+        if idx > 0:
+            report_text = content[:idx].strip()
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(report_text)
+
+    ui.show_assistant(report_text)
+    ui.show_success(f"Report saved to {path}")
+
+
+def _handle_action(content, action_match, ctx, registry, provider,
+                   max_iterations, max_context_tokens):
     """Process a parsed ACTION from the assistant response.
 
     Returns True if the agent should stop (user quit), False otherwise.
@@ -17,7 +156,7 @@ def _handle_action(content, action_match, ctx, registry):
     try:
         action = json.loads(action_match.group(1))
     except json.JSONDecodeError:
-        print("⚠️  Could not parse tool call JSON. Asking LLM to retry.")
+        ui.show_warning("Could not parse tool call JSON. Asking LLM to retry.")
         ctx.add_assistant(content)
         ctx.add_user(
             "Your ACTION was not valid JSON. "
@@ -31,7 +170,7 @@ def _handle_action(content, action_match, ctx, registry):
     tool = registry.get(tool_name)
     if tool is None:
         available = ", ".join(t.name for t in registry.list_tools())
-        print(f"⚠️  Unknown tool: {tool_name}")
+        ui.show_warning(f"Unknown tool: {tool_name}")
         ctx.add_assistant(content)
         ctx.add_user(
             f"Unknown tool '{tool_name}'. Available tools: {available}"
@@ -39,12 +178,12 @@ def _handle_action(content, action_match, ctx, registry):
         return False
 
     if tool.requires_approval:
-        approved_args, execute = ask_tool_approval(tool_name, args)
+        approved_args, execute = ui.show_tool_approval_flow(tool_name, args)
     else:
         approved_args, execute = args, True
 
     if not (execute and approved_args is not None):
-        print("❌ Tool call cancelled.\n")
+        ui.show_error("Tool call cancelled.")
         ctx.add_assistant(content)
         ctx.add_user(
             f"Tool call '{tool_name}' cancelled by user. "
@@ -52,19 +191,25 @@ def _handle_action(content, action_match, ctx, registry):
         )
         return False
 
-    print(f"⚙️  Executing: {tool_name}")
-    result = tool.execute(**approved_args)
+    ui.show_tool_executing(tool_name)
+    result = _execute_with_timeout(tool, approved_args)
 
     if result.terminates:
-        print(f"✅ Done: {result.output}\n")
-        follow_up = input("Follow-up task (or Enter to quit): ").strip()
+        ui.show_success(f"Done: {result.output}")
+        follow_up = ui.prompt_followup()
         if not follow_up:
+            return True
+        if follow_up == "__report__":
+            _generate_report(ctx, provider, registry, max_context_tokens)
             return True
         ctx.add_assistant(content)
         ctx.add_user(follow_up)
     else:
-        status = "✅" if result.success else "❌"
-        print(f"{status} Result:\n{result.output}\n")
+        # Bash output was already streamed live — skip the result panel
+        if tool_name != "bash":
+            ui.show_tool_result(result.output, result.success)
+        elif not result.success:
+            ui.show_tool_result(result.output, result.success)
         ctx.add_assistant(content)
         ctx.add_tool_result(tool_name, result.output)
 
@@ -85,19 +230,34 @@ def agent_loop(
     )
 
     for _ in range(max_iterations):
-        content = provider.chat(ctx.get_messages())
-        print(f"\n🤖 Assistant: {content}\n")
+        with ui.spinner_llm():
+            content = provider.chat(ctx.get_messages())
 
-        action_match = ACTION_PATTERN.search(content)
+        action_match = find_action(content)
 
         if action_match:
-            if _handle_action(content, action_match, ctx, registry):
+            # Show only the reasoning, omit the ACTION block
+            idx = content.upper().find("ACTION")
+            reasoning = content[:idx].rstrip() if idx > 0 else ""
+            if reasoning:
+                ui.show_assistant(reasoning)
+        else:
+            ui.show_assistant(content)
+
+        if action_match:
+            if _handle_action(content, action_match, ctx, registry,
+                              provider, max_iterations, max_context_tokens):
                 return
         else:
-            follow_up = input("You: ").strip()
+            follow_up = ui.prompt_user_input()
             if not follow_up:
+                return
+            if follow_up == "__report__":
+                _generate_report(
+                    ctx, provider, registry, max_context_tokens,
+                )
                 return
             ctx.add_assistant(content)
             ctx.add_user(follow_up)
 
-    print("⚠️  Reached maximum iterations. Stopping.")
+    ui.show_warning("Reached maximum iterations. Stopping.")

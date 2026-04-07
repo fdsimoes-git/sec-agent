@@ -5,6 +5,8 @@ import argparse
 from .agent import agent_loop
 from .providers import OllamaProvider
 from .tools import default_registry
+from . import ui
+
 
 
 def main() -> None:
@@ -35,16 +37,32 @@ def main() -> None:
     registry = default_registry()
 
     if args.task:
-        task = args.task
-    else:
-        print("=== pen-tester-agent — Penetration Testing Assistant ===\n")
-        task = input("What do you want to do? ").strip()
-        if not task:
-            print("No task provided. Exiting.")
-            return
+        agent_loop(
+            args.task, provider, registry,
+            max_iterations=args.max_iterations,
+            max_context_tokens=args.max_context_tokens,
+        )
+        return
 
-    agent_loop(
-        task, provider, registry,
-        max_iterations=args.max_iterations,
-        max_context_tokens=args.max_context_tokens,
-    )
+    ui.show_banner()
+
+    while True:
+        choice = ui.show_menu()
+
+        if choice == "quit":
+            ui.show_goodbye()
+            break
+
+        if choice == "task":
+            task = ui.prompt_task()
+            if not task:
+                ui.show_no_task()
+                continue
+            agent_loop(
+                task, provider, registry,
+                max_iterations=args.max_iterations,
+                max_context_tokens=args.max_context_tokens,
+            )
+
+        elif choice == "report":
+            ui.show_info("Start a task first — reports are generated from session history.")

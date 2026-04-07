@@ -44,15 +44,26 @@ uv run pen-tester-agent --model llama3.1:8b "review nginx access.log for suspici
 uv run pen-tester-agent --max-iterations 5 "enumerate subdomains of example.com"
 ```
 
-Every command the agent proposes is shown to you first. You can approve (`y`), reject (`n`), or edit (`e`) before anything runs.
+## Interactive CLI
+
+When launched without a task, the agent presents an interactive menu (navigate with arrow keys):
+
+- **New penetration test task** — describe a task and the agent works through it step by step
+- **Generate report** — produce a professional pentest report from the current session
+- **Quit**
+
+During a session, every tool call is shown for approval via an arrow-key menu (approve / reject / edit args). Bash command output streams in real-time. A spinner indicates when the LLM is thinking or a non-bash tool is running.
+
+At any interaction point you can choose to generate a report from the session history or quit.
 
 ## How it works
 
 1. You describe a task in natural language.
 2. The agent (running locally via Ollama) reasons about the task and proposes a tool call (shell command, CVE lookup, file read/write, etc.).
-3. You review and approve/edit/reject the action.
-4. The output is fed back to the agent for the next step.
+3. You review and approve/edit/reject the action via arrow-key menu.
+4. Bash output streams live to the terminal; the full output is fed back to the agent.
 5. Repeat until the task is complete or you stop.
+6. Generate a structured pentest report from the session at any time.
 
 ## Disclaimer
 
