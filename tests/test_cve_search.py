@@ -12,7 +12,7 @@ def cve_tool():
 class TestCveSearchTool:
     def test_metadata(self, cve_tool):
         assert cve_tool.name == "cve_search"
-        assert cve_tool.requires_approval is False
+        assert cve_tool.requires_approval is True
 
     def test_no_query(self, cve_tool):
         r = cve_tool.execute()

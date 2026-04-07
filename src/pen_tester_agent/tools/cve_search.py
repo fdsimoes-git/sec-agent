@@ -35,7 +35,7 @@ class CveSearchTool(Tool):
             "default": 5,
         },
     }
-    requires_approval = False
+    requires_approval = True
 
     def execute(self, **kwargs) -> ToolResult:
         query = kwargs.get("query", "").strip()
