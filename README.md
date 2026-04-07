@@ -19,6 +19,19 @@ A penetration testing agent powered by local LLMs via [Ollama](https://ollama.co
 5. **Vulnerability Testing** — Active testing for SQL injection, XSS, misconfigurations, default credentials
 6. **Documentation** — Writing penetration test reports, documenting findings, saving evidence
 
+## Installation
+
+```bash
+# From PyPI
+pip install pen-tester-agent
+
+# Or with pipx (isolated install)
+pipx install pen-tester-agent
+
+# Or directly from GitHub
+pip install git+https://github.com/fdsimoes-git/pen-tester-agent.git
+```
+
 ## Prerequisites
 
 - [Ollama](https://ollama.com) installed and running
@@ -26,7 +39,6 @@ A penetration testing agent powered by local LLMs via [Ollama](https://ollama.co
   ```
   ollama pull qwen2.5-coder:3b
   ```
-- [uv](https://docs.astral.sh/uv/) (for running/developing)
 
 ## Usage
 
