@@ -61,12 +61,11 @@ uv run pen-tester-agent --max-iterations 5 "enumerate subdomains of example.com"
 When launched without a task, the agent presents an interactive menu (navigate with arrow keys):
 
 - **New penetration test task** — describe a task and the agent works through it step by step
-- **Generate report** — produce a professional pentest report from the current session
 - **Quit**
 
 During a session, every tool call is shown for approval via an arrow-key menu (approve / reject / edit args). Bash command output streams in real-time. A spinner indicates when the LLM is thinking or a non-bash tool is running.
 
-At any interaction point you can choose to generate a report from the session history or quit.
+At any interaction point during a session you can choose to generate a report from the session history or quit.
 
 ## How it works
 

@@ -35,10 +35,9 @@ BANNER = (
 
 MAIN_MENU_OPTIONS = [
     "  New penetration test task",
-    "  Generate report",
     "  Quit",
 ]
-MAIN_MENU_KEYS = ["task", "report", "quit"]
+MAIN_MENU_KEYS = ["task", "quit"]
 
 # Shared menu style kwargs
 _MENU_STYLE = {
@@ -72,8 +71,11 @@ def _arrow_menu(options, title=None):
         console.print(f"  [{i}] {opt.strip()}")
     choice = input("").strip()
     try:
-        return int(choice)
-    except (ValueError, IndexError):
+        idx = int(choice)
+        if 0 <= idx < len(options):
+            return idx
+        return None
+    except ValueError:
         return None
 
 
@@ -298,6 +300,10 @@ def show_tool_approval_flow(tool_name, args):
             if edited:
                 try:
                     new_args = json.loads(edited)
+                    if not isinstance(new_args, dict):
+                        show_error("Args must be a JSON object, not "
+                                   f"{type(new_args).__name__}.")
+                        continue
                     return new_args, True
                 except json.JSONDecodeError:
                     show_error(

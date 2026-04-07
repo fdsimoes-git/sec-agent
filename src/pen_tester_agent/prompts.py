@@ -51,8 +51,8 @@ def find_action(content):
     Returns a match-like object with group(1) containing the JSON,
     or None if no valid ACTION block is found.
     """
-    # Find "ACTION" optionally followed by ":" and whitespace
-    action_re = re.compile(r"ACTION:?\s*", re.IGNORECASE)
+    # Find "ACTION" anchored to start of line with word boundary
+    action_re = re.compile(r"^\s*ACTION\b:?\s*", re.IGNORECASE | re.MULTILINE)
     match = action_re.search(content)
     if not match:
         return None

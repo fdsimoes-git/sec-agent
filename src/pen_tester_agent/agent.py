@@ -3,7 +3,7 @@
 import json
 import select
 import subprocess
-import sys
+import time
 
 from .context import ContextManager
 from .prompts import find_action, build_system_prompt
@@ -21,35 +21,30 @@ def _execute_bash_streaming(approved_args):
     if not command:
         return ToolResult(output="Error: no command provided", success=False)
 
+    lines = []
     try:
         proc = subprocess.Popen(
             command, shell=True,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         )
-        lines = []
-        import time
         start = time.monotonic()
 
         while True:
             elapsed = time.monotonic() - start
-            remaining = timeout - elapsed
-            if remaining <= 0:
+            if elapsed >= timeout:
                 raise subprocess.TimeoutExpired(command, timeout)
 
             # Use select to poll stdout/stderr without blocking
-            readable = []
             streams = []
             if proc.stdout:
                 streams.append(proc.stdout)
             if proc.stderr:
                 streams.append(proc.stderr)
 
-            if sys.platform != "win32" and streams:
+            if streams:
                 readable, _, _ = select.select(streams, [], [], 0.1)
             else:
-                import time as _t
-                _t.sleep(0.1)
-                readable = streams
+                readable = []
 
             for stream in readable:
                 line = stream.readline()
@@ -74,14 +69,15 @@ def _execute_bash_streaming(approved_args):
 
     except subprocess.TimeoutExpired:
         proc.kill()
-        stdout_partial, stderr_partial = proc.communicate()
-        partial = ""
-        if stdout_partial:
-            partial += stdout_partial
-        if stderr_partial:
+        stdout_remaining, stderr_remaining = proc.communicate()
+        # Combine already-streamed lines with any remaining buffered output
+        partial = "".join(lines)
+        if stdout_remaining:
+            partial += stdout_remaining
+        if stderr_remaining:
             if partial:
                 partial += "\n"
-            partial += stderr_partial
+            partial += stderr_remaining
         msg = f"Command timed out after {timeout}s."
         if partial:
             msg += f"\nPartial output:\n{partial}"
@@ -105,6 +101,11 @@ def _generate_report(ctx, provider, registry, max_context_tokens):
         if msg["role"] == "system":
             continue
         history += f"[{msg['role']}]: {msg['content']}\n\n"
+
+    # Cap history to fit within context budget (reserve ~2000 chars for prompt)
+    max_history_chars = max_context_tokens * 4 - 2000
+    if len(history) > max_history_chars:
+        history = history[:max_history_chars] + "\n\n[... history truncated ...]"
 
     report_task = (
         "Based on the penetration testing session below, write a professional "
@@ -136,9 +137,9 @@ def _generate_report(ctx, provider, registry, max_context_tokens):
     report_text = content
     action_match = find_action(content)
     if action_match:
-        idx = content.find("ACTION")
-        if idx > 0:
-            report_text = content[:idx].strip()
+        idx = content.upper().find("ACTION")
+        if idx >= 0:
+            report_text = content[:idx].strip() if idx > 0 else ""
 
     with open(path, "w", encoding="utf-8") as f:
         f.write(report_text)

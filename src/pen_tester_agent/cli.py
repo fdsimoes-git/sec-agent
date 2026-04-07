@@ -64,5 +64,3 @@ def main() -> None:
                 max_context_tokens=args.max_context_tokens,
             )
 
-        elif choice == "report":
-            ui.show_info("Start a task first — reports are generated from session history.")
