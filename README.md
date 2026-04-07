@@ -1,4 +1,10 @@
+<p align="center">
+  <img src="assets/pen-tester-pic.png" alt="Pen-Tester Agent" width="400">
+</p>
+
 # pen-tester-agent
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A penetration testing agent powered by local LLMs via [Ollama](https://ollama.com).
 
