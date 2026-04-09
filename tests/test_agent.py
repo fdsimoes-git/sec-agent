@@ -184,3 +184,49 @@ class TestAgentLoop:
         tool_result_msg = [m for m in second_call_msgs if "Tool 'bash' output:" in m["content"]]
         assert len(tool_result_msg) == 1
         assert "truncated" in tool_result_msg[0]["content"]
+
+    def test_report_after_done(self, monkeypatch, capsys, tmp_path):
+        """Report generation works from the post-done follow-up menu."""
+        report_path = tmp_path / "report.txt"
+        provider = FakeProvider([
+            done_action("scan complete"),
+            "## Executive Summary\nNo critical findings.",
+        ])
+        registry = default_registry()
+        # "1" = Generate report, then report path, then done
+        inputs = iter(["1", str(report_path)])
+        monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+        agent_loop("scan 10.0.0.1", provider, registry, max_iterations=5)
+        assert report_path.exists()
+        content = report_path.read_text()
+        assert "Executive Summary" in content
+
+    def test_report_after_plain_text(self, monkeypatch, capsys, tmp_path):
+        """Report generation works from the plain-text response menu."""
+        report_path = tmp_path / "report.txt"
+        provider = FakeProvider([
+            "What should I scan?",
+            "## Report\nAll clear.",
+        ])
+        registry = default_registry()
+        # "1" = Generate report from user-input menu, then report path
+        inputs = iter(["1", str(report_path)])
+        monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+        agent_loop("scan something", provider, registry, max_iterations=5)
+        assert report_path.exists()
+        content = report_path.read_text()
+        assert "Report" in content
+
+    def test_report_unwritable_path(self, monkeypatch, capsys):
+        """Report generation handles unwritable path gracefully."""
+        provider = FakeProvider([
+            done_action("done"),
+            "## Report\nFindings here.",
+        ])
+        registry = default_registry()
+        # "1" = Generate report, bad path
+        inputs = iter(["1", "/nonexistent/dir/report.txt"])
+        monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+        agent_loop("test", provider, registry, max_iterations=5)
+        out = capsys.readouterr().out
+        assert "Could not save report" in out

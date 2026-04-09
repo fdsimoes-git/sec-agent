@@ -65,6 +65,10 @@ class ContextManager:
             self._compress()
         return self._messages
 
+    def get_raw_messages(self) -> list[dict]:
+        """Return the uncompressed message list (for report generation)."""
+        return list(self._messages)
+
     def _compress(self) -> None:
         """Summarize older tool outputs to reclaim context space.
 

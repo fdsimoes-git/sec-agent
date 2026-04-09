@@ -14,6 +14,7 @@ from .tools.base import ToolRegistry, ToolResult
 from . import ui
 
 TOOL_TIMEOUT = 60
+MAX_CAPTURE_CHARS = 500_000  # Cap captured output to ~500KB
 
 
 def _execute_bash_streaming(approved_args):
@@ -65,6 +66,7 @@ def _execute_bash_streaming(approved_args):
     # POSIX: non-blocking streaming via select() + os.read()
     # Merge stderr into stdout to avoid interleaved/corrupted lines
     lines = []
+    captured_chars = 0
     try:
         proc = subprocess.Popen(
             command, shell=True,
@@ -72,6 +74,14 @@ def _execute_bash_streaming(approved_args):
         )
         start = time.monotonic()
         buf = b""
+
+        def _capture(decoded):
+            """Append to captured output if under the cap."""
+            nonlocal captured_chars
+            if captured_chars < MAX_CAPTURE_CHARS:
+                lines.append(decoded)
+                captured_chars += len(decoded)
+            ui.stream_line(decoded)
 
         while True:
             elapsed = time.monotonic() - start
@@ -92,8 +102,7 @@ def _execute_bash_streaming(approved_args):
                             line_bytes.decode("utf-8", errors="replace")
                             + "\n"
                         )
-                        lines.append(decoded)
-                        ui.stream_line(decoded)
+                        _capture(decoded)
 
             if proc.poll() is not None:
                 # Process exited — drain remaining pipe data
@@ -107,12 +116,10 @@ def _execute_bash_streaming(approved_args):
                     decoded = (
                         line_bytes.decode("utf-8", errors="replace") + "\n"
                     )
-                    lines.append(decoded)
-                    ui.stream_line(decoded)
+                    _capture(decoded)
                 if buf:
                     decoded = buf.decode("utf-8", errors="replace")
-                    lines.append(decoded)
-                    ui.stream_line(decoded)
+                    _capture(decoded)
                 break
 
         output = "".join(lines)
@@ -154,7 +161,7 @@ def _execute_tool(tool, approved_args):
 def _generate_report(ctx, provider, registry, max_context_tokens):
     """Generate a report based on the current session context."""
     history = ""
-    for msg in ctx.get_messages():
+    for msg in ctx.get_raw_messages():
         if msg["role"] == "system":
             continue
         history += f"[{msg['role']}]: {msg['content']}\n\n"
