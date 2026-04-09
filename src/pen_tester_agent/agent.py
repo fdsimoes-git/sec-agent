@@ -45,8 +45,11 @@ def _execute_bash_streaming(approved_args):
             stdout, _ = proc.communicate(timeout=timeout)
             for line in (stdout or "").splitlines(keepends=True):
                 ui.stream_line(line)
+            output = stdout if stdout else "(no output)"
+            if len(output) > MAX_CAPTURE_CHARS:
+                output = output[:MAX_CAPTURE_CHARS] + "\n... (capture truncated)"
             return ToolResult(
-                output=stdout if stdout else "(no output)",
+                output=output,
                 success=proc.returncode == 0,
             )
         except subprocess.TimeoutExpired:
@@ -58,7 +61,8 @@ def _execute_bash_streaming(approved_args):
             stdout, _ = proc.communicate()
             msg = f"Error: command timed out after {timeout}s"
             if stdout:
-                msg += f"\nPartial output:\n{stdout}"
+                partial = stdout[:MAX_CAPTURE_CHARS]
+                msg += f"\nPartial output:\n{partial}"
             return ToolResult(output=msg, success=False)
         except OSError as exc:
             return ToolResult(output=f"Error: {exc}", success=False)
