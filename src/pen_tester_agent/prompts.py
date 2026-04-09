@@ -1,5 +1,6 @@
 """System prompt construction and response parsing patterns."""
 
+import json
 import re
 
 from .tools.base import ToolRegistry
@@ -65,6 +66,12 @@ def find_action(content):
 
         json_str = _extract_json_object(after, brace_pos)
         if json_str is None:
+            continue
+
+        # Verify it's actually valid JSON before returning
+        try:
+            json.loads(json_str)
+        except json.JSONDecodeError:
             continue
 
         return _ActionMatch(json_str, start=match.start())

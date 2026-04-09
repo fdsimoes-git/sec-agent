@@ -89,17 +89,19 @@ class TestAgentLoop:
         assert "Unknown tool" in out
 
     def test_invalid_json_action(self, monkeypatch, capsys):
-        """Agent handles malformed JSON in ACTION and recovers."""
+        """Agent treats malformed ACTION JSON as plain text and recovers."""
         provider = FakeProvider([
             'ACTION: {not: valid json}',
             done_action("gave up"),
         ])
         registry = default_registry()
-        # "2" = Quit follow-up
-        monkeypatch.setattr("builtins.input", lambda _: "2")
+        # Invalid JSON means no ACTION found, so agent shows as plain text
+        # and prompts for user input: "0" = Reply, "continue" = text,
+        # "2" = Quit follow-up after done
+        inputs = iter(["0", "continue", "2"])
+        monkeypatch.setattr("builtins.input", lambda _: next(inputs))
         agent_loop("do something", provider, registry, max_iterations=5)
         out = capsys.readouterr().out
-        assert "could not parse" in out.lower()
         assert "gave up" in out.lower()
 
     def test_plain_text_response(self, monkeypatch, capsys):

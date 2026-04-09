@@ -40,7 +40,8 @@ def _execute_bash_streaming(approved_args):
         try:
             proc = subprocess.Popen(
                 command, shell=True,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, errors="replace",
             )
             stdout, _ = proc.communicate(timeout=timeout)
             for line in (stdout or "").splitlines(keepends=True):
