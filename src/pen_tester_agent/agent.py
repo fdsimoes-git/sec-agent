@@ -44,7 +44,10 @@ def _execute_bash_streaming(approved_args):
             stdout, _ = proc.communicate(timeout=timeout)
             for line in (stdout or "").splitlines(keepends=True):
                 ui.stream_line(line)
-            return ToolResult(output=stdout if stdout else "(no output)")
+            return ToolResult(
+                output=stdout if stdout else "(no output)",
+                success=proc.returncode == 0,
+            )
         except subprocess.TimeoutExpired:
             if proc.poll() is None:
                 try:
@@ -52,7 +55,7 @@ def _execute_bash_streaming(approved_args):
                 except ProcessLookupError:
                     pass
             stdout, _ = proc.communicate()
-            msg = f"Command timed out after {timeout}s."
+            msg = f"Error: command timed out after {timeout}s"
             if stdout:
                 msg += f"\nPartial output:\n{stdout}"
             return ToolResult(output=msg, success=False)
@@ -113,7 +116,10 @@ def _execute_bash_streaming(approved_args):
                 break
 
         output = "".join(lines)
-        return ToolResult(output=output if output else "(no output)")
+        return ToolResult(
+            output=output if output else "(no output)",
+            success=(proc.returncode == 0),
+        )
 
     except subprocess.TimeoutExpired:
         if proc.poll() is None:
@@ -125,7 +131,7 @@ def _execute_bash_streaming(approved_args):
         partial = "".join(lines)
         if stdout_remaining:
             partial += stdout_remaining.decode("utf-8", errors="replace")
-        msg = f"Command timed out after {timeout}s."
+        msg = f"Error: command timed out after {timeout}s"
         if partial:
             msg += f"\nPartial output:\n{partial}"
         return ToolResult(output=msg, success=False)
@@ -203,7 +209,7 @@ def _generate_report(ctx, provider, registry, max_context_tokens):
 
 
 def _handle_action(content, action_match, ctx, registry, provider,
-                   max_iterations, max_context_tokens):
+                   max_context_tokens):
     """Process a parsed ACTION from the assistant response.
 
     Returns True if the agent should stop (user quit), False otherwise.
@@ -310,7 +316,7 @@ def agent_loop(
 
         if action_match:
             if _handle_action(content, action_match, ctx, registry,
-                              provider, max_iterations, max_context_tokens):
+                              provider, max_context_tokens):
                 return
         else:
             ctx.add_assistant(content)
