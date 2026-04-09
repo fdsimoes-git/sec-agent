@@ -35,20 +35,35 @@ class ContextManager:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": task},
         ]
+        # Separate raw history with full tool output for report generation
+        self._raw_messages: list[dict] = list(self._messages)
         self.max_context_tokens = max_context_tokens
         self.max_output_chars = max_output_chars
         self.preserve_recent = preserve_recent
 
     def add_assistant(self, content: str) -> None:
         """Append an assistant message."""
-        self._messages.append({"role": "assistant", "content": content})
+        msg = {"role": "assistant", "content": content}
+        self._messages.append(msg)
+        self._raw_messages.append(msg)
 
     def add_user(self, content: str) -> None:
         """Append a user message."""
-        self._messages.append({"role": "user", "content": content})
+        msg = {"role": "user", "content": content}
+        self._messages.append(msg)
+        self._raw_messages.append(msg)
 
     def add_tool_result(self, tool_name: str, output: str) -> None:
-        """Append a tool result as a user message, truncating if needed."""
+        """Append a tool result as a user message, truncating if needed.
+
+        The full output is preserved in the raw history for report generation.
+        """
+        # Full output for reports
+        self._raw_messages.append({
+            "role": "user",
+            "content": f"Tool '{tool_name}' output:\n{output}",
+        })
+        # Truncated output for LLM context
         truncated = truncate_output(output, self.max_output_chars)
         self._messages.append({
             "role": "user",
@@ -66,8 +81,12 @@ class ContextManager:
         return self._messages
 
     def get_raw_messages(self) -> list[dict]:
-        """Return the uncompressed message list (for report generation)."""
-        return list(self._messages)
+        """Return the full uncompressed message list (for report generation).
+
+        This includes complete tool outputs (not truncated) and is never
+        affected by context compression.
+        """
+        return list(self._raw_messages)
 
     def _compress(self) -> None:
         """Summarize older tool outputs to reclaim context space.
